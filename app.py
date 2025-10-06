@@ -184,9 +184,19 @@ def create_llm(api_key: str, model: str):
 
         def call(self, instruction: str, context: str = "") -> str:
             """Call OpenRouter API"""
+            # สร้าง system prompt สำหรับ pandasai
+            system_prompt = {
+                "role": "system",
+                "content": (
+                    "คุณเป็นผู้ช่วยวิเคราะห์ข้อมูลที่เชี่ยวชาญ "
+                    "ตอบคำถามเป็นภาษาไทยที่ชัดเจน กระชับ และเป็นประโยชน์"
+                )
+            }
+            
             user_content = f"{context}\n\n{instruction}" if context else instruction
             
             messages = [
+                system_prompt,
                 {
                     "role": "user",
                     "content": user_content
@@ -210,7 +220,7 @@ def create_llm(api_key: str, model: str):
                 st.session_state.api_stats['requests'] += 1
                 
                 response = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",  # ลบช่องว่างท้ายแล้ว
+                    "https://openrouter.ai/api/v1/chat/completions",
                     headers=headers,
                     json=payload,
                     timeout=60
@@ -232,7 +242,52 @@ def create_llm(api_key: str, model: str):
         @property
         def type(self) -> str:
             return "openrouter"
-    
+        
+        # เพิ่ม properties ที่จำเป็นสำหรับ pandasai LLM
+        @property
+        def model_name(self) -> str:
+            return self.model
+        
+        def generate(self, prompt: str) -> str:
+            """Generate response using OpenRouter API"""
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Content-Type": "application/json",
+            }
+            
+            messages = [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+            
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
+            }
+            
+            try:
+                response = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                )
+                
+                response.raise_for_status()
+                data = response.json()
+                
+                if 'choices' in data and len(data['choices']) > 0:
+                    return data['choices'][0]['message']['content']
+                else:
+                    return "❌ ไม่ได้รับคำตอบจาก AI"
+                    
+            except Exception as e:
+                return f"❌ เกิดข้อผิดพลาด: {str(e)}"
+
     return OpenRouterDirectLLM(api_token=api_key, model=model)
 
 # ==================== File Processing Functions ====================
