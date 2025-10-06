@@ -210,7 +210,7 @@ def create_llm(api_key: str, model: str):
                 st.session_state.api_stats['requests'] += 1
                 
                 response = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
+                    "https://openrouter.ai/api/v1/chat/completions",  # ลบช่องว่างท้ายแล้ว
                     headers=headers,
                     json=payload,
                     timeout=60
@@ -283,7 +283,7 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     
     return df_clean
 
-def ask_question_about_data(question: str, dataframes: Dict[str, pd.DataFrame], llm: LLM) -> str:
+def ask_question_about_data(question: str, dataframes: Dict[str, pd.DataFrame], llm: "LLM") -> str:
     """Ask question about data using SmartDataframe"""
     
     # Check cache
