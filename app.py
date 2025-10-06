@@ -157,83 +157,83 @@ def init_session_state():
             st.session_state[key] = value
 
 # ==================== OpenRouter LLM ====================
-class OpenRouterDirectLLM(LLM):
-    """OpenRouter LLM using direct HTTP requests"""
+def create_llm(api_key: str, model: str):
+    """Create and return an OpenRouter LLM instance"""
+    if not PANDASAI_AVAILABLE:
+        raise RuntimeError("pandasai ไม่ได้ติดตั้ง แต่จำเป็นสำหรับโหมดนี้")
     
-    def __init__(
-        self, 
-        api_token: str, 
-        model: str = "anthropic/claude-3-haiku",
-        temperature: float = 0.2,
-        max_tokens: int = 2000,
-        **kwargs
-    ):
-        self.api_token = api_token
-        self.model = model
-        self.temperature = temperature
-        self.max_tokens = max_tokens
-        self.base_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.kwargs = kwargs
-        self.request_count = 0
-        self.error_count = 0
-
-    def call(self, instruction: str, context: str = "") -> str:
-        """Call OpenRouter API"""
-        user_content = f"{context}\n\n{instruction}" if context else instruction
+    # ตอนนี้เราแน่ใจว่า LLM มีอยู่
+    class OpenRouterDirectLLM(LLM):
+        """OpenRouter LLM using direct HTTP requests"""
         
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "คุณเป็นผู้ช่วยวิเคราะห์ข้อมูลธุรกิจที่เชี่ยวชาญ "
-                    "ตอบคำถามเป็นภาษาไทยที่ชัดเจน กระชับ และเป็นประโยชน์"
-                )
-            },
-            {
-                "role": "user",
-                "content": user_content
+        def __init__(
+            self, 
+            api_token: str, 
+            model: str = "anthropic/claude-3-haiku",
+            temperature: float = 0.2,
+            max_tokens: int = 2000,
+            **kwargs
+        ):
+            self.api_token = api_token
+            self.model = model
+            self.temperature = temperature
+            self.max_tokens = max_tokens
+            self.kwargs = kwargs
+            self.request_count = 0
+            self.error_count = 0
+
+        def call(self, instruction: str, context: str = "") -> str:
+            """Call OpenRouter API"""
+            user_content = f"{context}\n\n{instruction}" if context else instruction
+            
+            messages = [
+                {
+                    "role": "user",
+                    "content": user_content
+                }
+            ]
+            
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Content-Type": "application/json",
             }
-        ]
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_token}",
-            "Content-Type": "application/json",
-        }
-        
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-        }
-        
-        try:
-            self.request_count += 1
-            st.session_state.api_stats['requests'] += 1
             
-            response = requests.post(
-                self.base_url,
-                headers=headers,
-                json=payload,
-                timeout=60
-            )
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
+            }
             
-            response.raise_for_status()
-            data = response.json()
-            
-            if 'choices' in data and len(data['choices']) > 0:
-                return data['choices'][0]['message']['content']
-            else:
-                return "❌ ไม่ได้รับคำตอบจาก AI"
+            try:
+                self.request_count += 1
+                st.session_state.api_stats['requests'] += 1
                 
-        except Exception as e:
-            self.error_count += 1
-            st.session_state.api_stats['errors'] += 1
-            return f"❌ เกิดข้อผิดพลาด: {str(e)}"
+                response = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                )
+                
+                response.raise_for_status()
+                data = response.json()
+                
+                if 'choices' in data and len(data['choices']) > 0:
+                    return data['choices'][0]['message']['content']
+                else:
+                    return "❌ ไม่ได้รับคำตอบจาก AI"
+                    
+            except Exception as e:
+                self.error_count += 1
+                st.session_state.api_stats['errors'] += 1
+                return f"❌ เกิดข้อผิดพลาด: {str(e)}"
 
-    @property
-    def type(self) -> str:
-        return "openrouter_direct"
+        @property
+        def type(self) -> str:
+            return "openrouter"
+    
+    return OpenRouterDirectLLM(api_token=api_key, model=model)
 
 # ==================== File Processing Functions ====================
 def load_json_file(file_content: bytes) -> tuple:
@@ -342,7 +342,11 @@ def handle_new_mode_chat(api_key: str, model: str):
     
     # Initialize LLM if needed
     if not st.session_state.llm and api_key:
-        st.session_state.llm = OpenRouterDirectLLM(api_token=api_key, model=model)
+        try:
+            st.session_state.llm = create_llm(api_key, model)
+        except Exception as e:
+            st.error(f"❌ สร้าง LLM ไม่ได้: {e}")
+            return
     
     # Chat interface with instructions
     with st.expander("💡 วิธีใช้งาน", expanded=False):
@@ -442,7 +446,11 @@ def handle_complaint_chat(api_key: str, model: str):
     
     # Initialize LLM if needed
     if not st.session_state.llm and api_key:
-        st.session_state.llm = OpenRouterDirectLLM(api_token=api_key, model=model)
+        try:
+            st.session_state.llm = create_llm(api_key, model)
+        except Exception as e:
+            st.error(f"❌ สร้าง LLM ไม่ได้: {e}")
+            return
     
     # Chat interface
     with st.expander("💡 วิธีใช้งาน", expanded=False):
@@ -601,11 +609,11 @@ def handle_data_analysis(api_key: str, model: str, multiple: bool):
             
             # Setup LLM
             if st.session_state.dataframes:
-                st.session_state.llm = OpenRouterDirectLLM(
-                    api_token=api_key,
-                    model=model
-                )
-                st.success("✅ เตรียม AI พร้อมแล้ว")
+                try:
+                    st.session_state.llm = create_llm(api_key, model)
+                    st.success("✅ เตรียม AI พร้อมแล้ว")
+                except Exception as e:
+                    st.error(f"❌ สร้าง LLM ไม่ได้: {e}")
     
     # Show data if loaded
     if st.session_state.dataframes:
